@@ -148,7 +148,10 @@ export default function Footer({ visible = true }: FooterProps) {
                 Connecting legal professionals, legal knowledge, and opportunity
                 through one trusted network.
               </p>
-              <p className="text-[12px] text-gray-300 italic">Est. 2026</p>
+              <p className="text-[13px] text-gray-500 leading-relaxed">
+                8B Chris Alli Crescent, Ikoyi, Lagos State, Nigeria
+              </p>
+              <p className="text-[12px] text-gray-300 italic mt-3">Est. 2026</p>
             </div>
 
             {/* Explore */}
