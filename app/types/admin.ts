@@ -251,6 +251,20 @@ export interface DocketEventListItem {
   endDate?: string;
 }
 
+// Recorded refund on a promotion's serviceRequest (payload.refund).
+// source "manual": an admin paid it by hand and recorded it via
+// POST /admin/docket/:id/refund. "paystack": refunded in the Paystack
+// dashboard and recorded by the webhook, so no admin action is needed.
+export interface DocketRefund {
+  source: "manual" | "paystack";
+  reference?: string | null;
+  note?: string | null;
+  byAdminId?: string | null;
+  refundedAt: string;
+}
+
+export type DocketPaymentStatus = "pending" | "paid" | "refunded" | string;
+
 export interface DocketEventDetail {
   id: string;
   eventName: string;
@@ -284,6 +298,7 @@ export interface DocketEventDetail {
     startAt: string;
     flyerUrl: string;
     shareOnSocial: boolean;
+    refund?: DocketRefund;
   };
   event?: {
     id: string;

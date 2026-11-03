@@ -15,6 +15,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { AdminUserDetail, AccountListItem } from "@/app/types/admin";
+import { openSignedDocument } from "@/lib/signedDocument";
 import {
   useAdminUserActions,
   useAdminVerificationDocuments,
@@ -164,7 +165,7 @@ export default function UserDetailModal({ user, onClose }: Props) {
                 <div className="flex items-center justify-between border border-gray-200 rounded-lg px-3.5 py-2.5 mb-5">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="w-8 h-8 rounded bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                      PDF
+                      DOC
                     </span>
                     <div className="min-w-0">
                       <p className="text-[13px] text-gray-800 truncate">
@@ -179,14 +180,23 @@ export default function UserDetailModal({ user, onClose }: Props) {
                       </p>
                     </div>
                   </div>
-                  <a
-                    href={docsQuery.data.items[0].url}
-                    target="_blank"
-                    rel="noreferrer"
+                  {/* Signed link (expires after 15 min): refetch before opening
+                      so a viewer left open never lands on an expired link.
+                      Many KYC documents are images, so open the raw link in a
+                      tab rather than a PDF-only viewer. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openSignedDocument(async () => {
+                        const { data } = await docsQuery.refetch();
+                        return data?.items?.[0]?.url;
+                      })
+                    }
+                    title="Open document in a new tab"
                     className="text-gray-400 hover:text-gray-700"
                   >
                     <Eye size={16} />
-                  </a>
+                  </button>
                 </div>
                 <div className="mb-5 overflow-hidden rounded-2xl border border-gray-200">
                   <iframe

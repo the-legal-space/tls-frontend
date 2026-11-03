@@ -69,6 +69,19 @@ function getNotificationMeta(notif: Notification): {
       };
     case "event_promotion_rejected":
       return { icon: <XCircle size={15} />, label: "Event Promotion Rejected" };
+    case "event_promotion_refunded":
+      return {
+        icon: <RotateCcw size={15} />,
+        label: "Event Promotion Refunded",
+      };
+    // Admin alerts
+    case "payment_dispute_opened":
+      return {
+        icon: <AlertTriangle size={15} className="text-red-500" />,
+        label: "Payment Dispute — Urgent",
+      };
+    case "payment_refunded_external":
+      return { icon: <CreditCard size={15} />, label: "Payment Refunded" };
     case "announcement":
       return { icon: <Megaphone size={15} />, label: "Announcement" };
     case "post_restored":
@@ -443,6 +456,15 @@ function getBodyText(notif: Notification): {
         };
       }
       if (kind === "event_promotion_rejected") {
+        // The backend body carries the reason and, for a paid promotion,
+        // ends with "Contact support to arrange your refund".
+        if (notif.body) {
+          const title = notif.payload.title as string | undefined;
+          return {
+            primary: notif.body,
+            secondary: title ? `Event: ${title}` : undefined,
+          };
+        }
         const title = notif.payload.title as string | undefined;
         const reason = notif.payload.reason as string | undefined;
         return {
@@ -454,6 +476,27 @@ function getBodyText(notif: Notification): {
             .filter(Boolean)
             .join(" · "),
         };
+      }
+      // New kinds: the backend renders the copy, so show its body as-is
+      // (its title just repeats the label above).
+      if (kind === "payment_dispute_opened") {
+        // Paystack sets a response deadline; past it the dispute is lost.
+        const dueAt = notif.payload.dueAt as string | undefined;
+        return {
+          primary: notif.body ?? "A customer disputed a payment.",
+          secondary: dueAt
+            ? `Respond by ${new Date(dueAt).toLocaleString("en-GB", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}`
+            : undefined,
+        };
+      }
+      if (
+        kind === "event_promotion_refunded" ||
+        kind === "payment_refunded_external"
+      ) {
+        return { primary: notif.body ?? "A payment was refunded." };
       }
       if (kind === "post_restored") {
         const snippet = notif.payload.snippet as string | undefined;
@@ -473,7 +516,10 @@ function getBodyText(notif: Notification): {
         };
       }
       return {
-        primary: notif.payload.message ?? "You have a new notification.",
+        primary:
+          notif.payload.message ??
+          notif.body ??
+          "You have a new notification.",
       };
     }
   }

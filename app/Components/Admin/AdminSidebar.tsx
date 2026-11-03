@@ -23,6 +23,8 @@ import {
   Loader2,
   Flag,
   Download,
+  Bell,
+  Scale,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -34,7 +36,9 @@ interface NavItem {
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutGrid },
+  { label: "Notifications", href: "/admin/notifications", icon: Bell },
   { label: "Users", href: "/admin/users", icon: Users },
+  { label: "SCN Disputes", href: "/admin/scn-disputes", icon: Scale },
   { label: "Subscriptions", href: "/admin/subscriptions", icon: CreditCard },
   { label: "Revenue", href: "/admin/revenue", icon: Gauge },
   { label: "On the Docket", href: "/admin/docket", icon: CalendarClock },
@@ -106,7 +110,8 @@ function LogoutModal({
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const unreadNotificationCount = Number(user?.unreadNotificationCount ?? 0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -172,6 +177,14 @@ export default function AdminSidebar() {
                 className={`w-4 h-4 shrink-0 ${isActive ? "text-blue-600" : "text-gray-400"}`}
               />
               {label}
+              {href === "/admin/notifications" &&
+                unreadNotificationCount > 0 && (
+                  <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center">
+                    {unreadNotificationCount > 99
+                      ? "99+"
+                      : unreadNotificationCount}
+                  </span>
+                )}
             </Link>
           );
         })}

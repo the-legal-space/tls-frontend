@@ -16,6 +16,11 @@ import {
   ResearchSource,
   classifyAssistant,
 } from "@/app/types/Research";
+import { researchService } from "@/services/Research.services";
+import { openSignedDocument } from "@/lib/signedDocument";
+
+/** Must match DRAFT_ID in Tlsresearchpage.tsx (thread not yet created). */
+const RESEARCH_DRAFT_ID = "__draft__";
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 function MarkdownContent({ content }: { content: string }) {
@@ -201,6 +206,24 @@ export function ErrorBubble({
   );
 }
 
+// ── PDF attachments ───────────────────────────────────────────────────────────
+// Attachment urls are signed links that expire after 15 minutes, so the one
+// rendered with the thread may be stale by the time the user clicks. Refetch
+// the thread and open the url it returns for the same message and position.
+function openAttachment(msg: ResearchMessage, index: number) {
+  const filename = msg.attachments?.[index]?.filename;
+  return openSignedDocument(async () => {
+    const thread = await researchService.getThread(msg.threadId);
+    const messages = thread?.messages ?? [];
+    const fresh =
+      messages.find((m) => m.id === msg.id)?.attachments?.[index] ??
+      messages
+        .flatMap((m) => m.attachments ?? [])
+        .find((a) => a.filename === filename);
+    return fresh?.url;
+  });
+}
+
 // ── Single message ────────────────────────────────────────────────────────────
 function MessageBubble({ msg }: { msg: ResearchMessage }) {
   const [copied, setCopied] = useState(false);
@@ -210,18 +233,41 @@ function MessageBubble({ msg }: { msg: ResearchMessage }) {
     return (
       <div className="flex justify-end mb-4">
         <div className="max-w-[70%]">
-          {msg.attachments?.map((a, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl mb-2 text-[12px] text-blue-700"
-            >
-              <span>📄</span>
-              <span className="truncate max-w-50">{a.filename}</span>
-              <span className="text-blue-400 shrink-0">
-                {(a.sizeBytes / 1024).toFixed(0)} KB
-              </span>
-            </div>
-          ))}
+          {msg.attachments?.map((a, i) => {
+            const chip = (
+              <>
+                <span>📄</span>
+                <span className="truncate max-w-50">{a.filename}</span>
+                <span className="text-blue-400 shrink-0">
+                  {(a.sizeBytes / 1024).toFixed(0)} KB
+                </span>
+              </>
+            );
+            const chipClass =
+              "flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl mb-2 text-[12px] text-blue-700";
+            // The send response carries only the assistant reply, so a PDF
+            // sent this session has no url until the thread is reopened. Once
+            // the thread exists, openAttachment finds it by filename. Only a
+            // draft that hasn't been saved yet can't be opened.
+            if (!a.url && msg.threadId === RESEARCH_DRAFT_ID) {
+              return (
+                <div key={i} className={chipClass}>
+                  {chip}
+                </div>
+              );
+            }
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => openAttachment(msg, i)}
+                title={`Open ${a.filename}`}
+                className={`${chipClass} ml-auto hover:bg-blue-100 transition`}
+              >
+                {chip}
+              </button>
+            );
+          })}
           <div className="px-4 py-2.5 bg-blue-700 text-white rounded-2xl rounded-br-sm text-[14px] leading-relaxed">
             {msg.content}
           </div>

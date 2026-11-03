@@ -9,6 +9,7 @@ import {
   CreateEventPayload,
   SubscriptionPlan,
 } from "@/app/types/admin";
+import { SIGNED_URL_REFRESH_MS } from "@/lib/signedDocument";
 // import types as needed
 
 const STALE = 1000 * 60 * 2;
@@ -93,8 +94,49 @@ export const useAdminVerificationDocuments = (
     queryFn: () =>
       adminService.getVerificationDocuments(accountId).then((r) => r.data.data),
     enabled: enabled && !!accountId,
-    staleTime: STALE,
+    // Document urls are signed links that expire after 15 minutes: refetch
+    // every time the viewer opens, keep the iframe link fresh while it stays
+    // open, and drop the cached links as soon as the viewer closes.
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: SIGNED_URL_REFRESH_MS,
   });
+
+// ---- SCN disputes ----
+// Evidence urls are signed links that expire after 15 minutes, so the list is
+// refetched on every visit and its cached links dropped once the page closes.
+export const useAdminScnDisputes = (params: {
+  page?: number;
+  limit?: number;
+  status?: string;
+}) =>
+  useQuery({
+    queryKey: ["admin", "scn-disputes", params],
+    queryFn: () => adminService.getScnDisputes(params).then((r) => r.data.data),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+  });
+
+export const useResolveScnDispute = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      outcome,
+      note,
+    }: {
+      id: string;
+      outcome: "resolved_claimant" | "resolved_existing" | "dismissed";
+      note?: string;
+    }) => adminService.resolveScnDispute(id, { outcome, note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "scn-disputes"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+};
 
 // ---- Subscriptions ----
 export const useAdminSubscriptions = () =>
@@ -126,11 +168,14 @@ export const useDocket = (params?: {
   page?: number;
   limit?: number;
   status?: string;
+  eventStatus?: string;
+  paymentStatus?: string;
   search?: string;
-}) =>
+}, enabled = true) =>
   useQuery({
     queryKey: ["admin", "docket", params],
     queryFn: () => adminService.getDocket(params).then((r) => r.data.data),
+    enabled,
     staleTime: STALE,
   });
 
@@ -247,8 +292,10 @@ export const useUpdateEventStatus = () => {
       }
       return adminService.rejectEvent(eventId, reason);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin", "docket"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "docket"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "events"] });
+    },
   });
 };
 
@@ -259,6 +306,32 @@ export const useRejectEvent = () => {
       adminService.rejectEvent(eventId, reason),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["admin", "docket"] }),
+  });
+};
+
+// After a refund the promotion is marked refunded, its event is taken down
+// and it stops counting toward revenue, so every view of those is refreshed.
+export const useRefundDocketItem = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      note,
+      refundReference,
+    }: {
+      id: string;
+      note?: string;
+      refundReference?: string;
+    }) =>
+      adminService
+        .refundDocketItem(id, { note, refundReference })
+        .then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "docket"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "events"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "revenue"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+    },
   });
 };
 

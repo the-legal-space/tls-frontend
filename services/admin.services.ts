@@ -238,6 +238,49 @@ export interface Announcement {
 
 // ---- Admin Service ----
 
+// ---- SCN disputes (GET /admin/scn-disputes) ----
+export type ScnDisputeStatus =
+  | "open"
+  | "resolved_claimant"
+  | "resolved_existing"
+  | "dismissed";
+
+export interface ScnDisputeEvidence {
+  id: string;
+  docType: string;
+  label: string;
+  /** Signed link, expires after 15 minutes. Use as-is; never store it. */
+  url: string;
+  createdAt: string;
+}
+
+export interface ScnDisputeItem {
+  id: string;
+  caseReference: string;
+  scn: string;
+  status: ScnDisputeStatus;
+  claimantStatement: string | null;
+  resolutionNote: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  evidence: ScnDisputeEvidence[];
+  claimant: {
+    id: string;
+    fullName: string;
+    email: string;
+    barFullName: string | null;
+    verificationStatus: string | null;
+    identityCheckStatus: string | null;
+  };
+  existingAccount: {
+    id: string;
+    fullName: string;
+    email: string;
+    barFullName: string | null;
+    verificationStatus: string | null;
+  };
+}
+
 export const adminService = {
   // Dashboard
   getDashboard: () =>
@@ -278,6 +321,24 @@ export const adminService = {
       };
     }>(`/admin/accounts/${accountId}/verification-documents`),
 
+  // SCN impersonation disputes
+  getScnDisputes: (params: { page?: number; limit?: number; status?: string }) => {
+    const cleaned: Record<string, string | number> = {};
+    if (params.status) cleaned.status = params.status;
+    if (params.page != null) cleaned.page = params.page;
+    if (params.limit != null) cleaned.limit = params.limit;
+    return api.get<{
+      data: { items: ScnDisputeItem[]; pagination: Pagination };
+    }>("/admin/scn-disputes", { params: cleaned });
+  },
+  resolveScnDispute: (
+    id: string,
+    body: {
+      outcome: Exclude<ScnDisputeStatus, "open">;
+      note?: string;
+    },
+  ) => api.post(`/admin/scn-disputes/${id}/resolve`, body),
+
   // User actions
   approveLawyer: (accountId: string, reason?: string) =>
     api.post(`/admin/kyc/${accountId}/approve`, { reason }),
@@ -299,8 +360,24 @@ export const adminService = {
 
   // On the Docket (Events) — promotion-only list, kept for existing consumers
   // (detail page, approve/reject — all keyed by serviceRequest.id).
-  getDocket: (params?: { page?: number; limit?: number; status?: string }) =>
-    api.get<{ data: DocketListResponse }>("/admin/docket", { params }),
+  getDocket: (params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    eventStatus?: string;
+    paymentStatus?: string;
+  }) => {
+    // Same caution as getEvents: the backend 400s on empty enum values.
+    const cleaned: Record<string, string | number> = {};
+    if (params?.status) cleaned.status = params.status;
+    if (params?.eventStatus) cleaned.eventStatus = params.eventStatus;
+    if (params?.paymentStatus) cleaned.paymentStatus = params.paymentStatus;
+    if (params?.page != null) cleaned.page = params.page;
+    if (params?.limit != null) cleaned.limit = params.limit;
+    return api.get<{ data: DocketListResponse }>("/admin/docket", {
+      params: cleaned,
+    });
+  },
 
   // All events (any status, editorial + promotion) — keyed by event.id.
   // Used for the main Docket table so non-promotion events show up too.
@@ -349,6 +426,14 @@ export const adminService = {
 
   rejectEvent: (eventId: string, reason?: string) =>
     api.post(`/admin/docket/${eventId}/reject`, { reason }),
+
+  // Record a refund that was paid by hand (usually a bank transfer arranged
+  // through a support ticket). Idempotent: a second call answers 200 with
+  // "Refund was already recorded"; 400 if the promotion was never paid.
+  refundDocketItem: (
+    id: string,
+    body: { note?: string; refundReference?: string },
+  ) => api.post<{ message: string }>(`/admin/docket/${id}/refund`, body),
 
   createEvent: (payload: CreateEventPayload) => {
     const form = new FormData();

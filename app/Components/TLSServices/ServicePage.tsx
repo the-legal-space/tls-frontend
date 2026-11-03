@@ -1,4 +1,4 @@
-import { Monitor, Clock, BarChart2, Sparkles, type LucideIcon } from "lucide-react";
+import { Monitor, Clock, BarChart2, Sparkles, LifeBuoy, type LucideIcon } from "lucide-react";
 import { Instrument_Serif, Geist } from "next/font/google";
 import Link from "next/link";
 
@@ -162,6 +162,23 @@ export default function ServicePage() {
         {services.map((service) => (
           <ServiceCard key={service.title} {...service} />
         ))}
+      </div>
+
+      {/* Rejected or refunded promotions send organisers here to arrange
+          their refund, so Support has to be one click away. */}
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <LifeBuoy size={18} className="text-blue-600 shrink-0" />
+          <p className="text-[13px] text-gray-600">
+            Questions about a payment, a rejected promotion or a refund?
+          </p>
+        </div>
+        <Link
+          href="/support"
+          className="shrink-0 text-[13px] font-medium text-blue-600 hover:underline"
+        >
+          Contact support
+        </Link>
       </div>
     </div>
   );

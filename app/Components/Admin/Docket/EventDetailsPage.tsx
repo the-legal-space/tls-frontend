@@ -2,17 +2,26 @@
 // Figma source: On the Docket-3.png (pending), On the Docket-4.png (approved)
 "use client";
 
+import { useState } from "react";
+import { isAxiosError } from "axios";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Printer } from "lucide-react";
+import { ArrowLeft, Loader2, Printer, RotateCcw, X } from "lucide-react";
 import StatusBadge from "../shared/StatusBadge";
 import StatCard from "../shared/StatCard";
 import { formatDate, formatNairaFull } from "../shared/format";
-import { useDocketEvent, useUpdateEventStatus } from "@/hooks/useAdmin";
+import {
+  useDocketEvent,
+  useRefundDocketItem,
+  useUpdateEventStatus,
+} from "@/hooks/useAdmin";
+import type { DocketRefund } from "@/app/types/admin";
 
 export default function EventDetailsPage({ eventId }: { eventId: string }) {
   const router = useRouter();
   const { data: event, isLoading } = useDocketEvent(eventId);
   const updateStatus = useUpdateEventStatus();
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
 
   if (isLoading || !event) {
     return (
@@ -23,9 +32,14 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
     );
   }
 
-  async function setStatus(status: "Approved" | "Rejected") {
-    await updateStatus.mutateAsync({ eventId, status });
+  async function approve() {
+    await updateStatus.mutateAsync({ eventId, status: "Approved" });
   }
+
+  // Refunds are paid by hand (no wallet), then recorded here. Offered for any
+  // paid promotion — most often one that has just been rejected.
+  const canRefund = event.paymentStatus === "paid";
+  const refund = event.payload?.refund;
 
   return (
     <div className="min-h-screen bg-white">
@@ -42,18 +56,28 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
           </h1>
         </div>
 
+        <div className="flex items-center gap-2">
+        {canRefund && (
+          <button
+            onClick={() => setShowRefundModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-[13px] font-semibold transition-colors"
+          >
+            <RotateCcw size={14} />
+            Mark as refunded
+          </button>
+        )}
         {event.event?.status === "pending_review" &&
         event.status !== "pending_payment" ? (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setStatus("Approved")}
+              onClick={approve}
               disabled={updateStatus.isPending}
               className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[13px] font-semibold transition-colors disabled:opacity-60"
             >
               Approve
             </button>
             <button
-              onClick={() => setStatus("Rejected")}
+              onClick={() => setShowRejectModal(true)}
               disabled={updateStatus.isPending}
               className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold transition-colors disabled:opacity-60"
             >
@@ -63,6 +87,7 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
         ) : (
           <StatusBadge status={event.event?.status ?? event.status} />
         )}
+        </div>
       </div>
 
       <div className="px-6 md:px-8 py-6">
@@ -138,6 +163,12 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
                   label="Payment Method"
                   value={event.payment.paymentMethod}
                 />
+                {event.paymentStatus && (
+                  <Row
+                    label="Payment Status"
+                    value={<StatusBadge status={event.paymentStatus} />}
+                  />
+                )}
                 <Row label="Duration" value={event.payment.durationLabel} />
                 <Row
                   label="Start Date"
@@ -158,7 +189,13 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
                 />
                 <Row
                   label="Payment Status"
-                  value={event.paymentStatus ?? "—"}
+                  value={
+                    event.paymentStatus ? (
+                      <StatusBadge status={event.paymentStatus} />
+                    ) : (
+                      "—"
+                    )
+                  }
                 />
                 {event.pricing ? (
                   <>
@@ -190,6 +227,8 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
             )}
           </div>
         </div>
+
+        {refund && <RefundDetails refund={refund} />}
 
         {/* Performance metrics */}
         <div className="border border-[#E5E7EB] rounded-xl p-5 mb-5">
@@ -276,6 +315,290 @@ export default function EventDetailsPage({ eventId }: { eventId: string }) {
           </div>
         )}
       </div>
+
+      {showRejectModal && (
+        <RejectModal
+          docketId={eventId}
+          paid={event.paymentStatus === "paid"}
+          onClose={() => setShowRejectModal(false)}
+        />
+      )}
+
+      {showRefundModal && (
+        <RefundModal
+          docketId={eventId}
+          onClose={() => setShowRefundModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// The backend requires a reason (1–500 chars); it is sent to the organiser.
+function RejectModal({
+  docketId,
+  paid,
+  onClose,
+}: {
+  docketId: string;
+  paid: boolean;
+  onClose: () => void;
+}) {
+  const updateStatus = useUpdateEventStatus();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reason.trim()) return;
+    setError(null);
+    try {
+      await updateStatus.mutateAsync({
+        eventId: docketId,
+        status: "Rejected",
+        reason: reason.trim(),
+      });
+      onClose();
+    } catch (err) {
+      setError(
+        (isAxiosError(err) && err.response?.data?.message) ||
+          "Couldn't reject this promotion. Please try again.",
+      );
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={!updateStatus.isPending ? onClose : undefined}
+      />
+      <form
+        onSubmit={handleSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reject-modal-title"
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <h3
+            id="reject-modal-title"
+            className="text-[16px] font-semibold text-gray-900"
+          >
+            Reject promotion
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={updateStatus.isPending}
+            className="text-gray-400 hover:text-gray-700"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <p className="text-[13px] text-gray-500 leading-relaxed mb-5">
+          The organiser will see this reason.
+          {paid &&
+            " They have paid, so they'll be asked to contact support to arrange a refund. Record it here with \"Mark as refunded\" once it's paid."}
+        </p>
+
+        <label
+          htmlFor="reject-reason"
+          className="block text-[12px] font-semibold text-gray-700 mb-1.5"
+        >
+          Reason
+        </label>
+        <textarea
+          id="reject-reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          maxLength={500}
+          rows={3}
+          required
+          placeholder="e.g. The flyer doesn't match the event details"
+          className="w-full mb-4 px-3 py-2 border border-gray-200 rounded-lg text-[13px] outline-none focus:border-blue-400 resize-none"
+        />
+
+        {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={updateStatus.isPending}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-[13px] font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!reason.trim() || updateStatus.isPending}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold disabled:opacity-60"
+          >
+            {updateStatus.isPending && (
+              <Loader2 size={14} className="animate-spin" />
+            )}
+            Reject
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function RefundDetails({ refund }: { refund: DocketRefund }) {
+  return (
+    <div className="border border-violet-100 bg-violet-50/40 rounded-xl p-5 mb-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-[14px] font-semibold text-gray-900">
+          Refund Details
+        </h2>
+        <StatusBadge status="refunded" />
+      </div>
+      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3.5 text-[13px]">
+        <Row
+          label="Recorded via"
+          value={
+            refund.source === "paystack"
+              ? "Paystack dashboard (recorded automatically)"
+              : "Manual (recorded by admin)"
+          }
+        />
+        <Row label="Refunded On" value={formatDate(refund.refundedAt)} />
+        <Row label="Reference" value={refund.reference || "—"} />
+        {refund.source === "manual" && (
+          <Row label="Recorded By (admin ID)" value={refund.byAdminId || "—"} />
+        )}
+        <div className="md:col-span-2">
+          <Row label="Note" value={refund.note || "—"} />
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function RefundModal({
+  docketId,
+  onClose,
+}: {
+  docketId: string;
+  onClose: () => void;
+}) {
+  const refund = useRefundDocketItem();
+  const [note, setNote] = useState("");
+  const [refundReference, setRefundReference] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      // Both fields are optional; send only what was filled in.
+      await refund.mutateAsync({
+        id: docketId,
+        note: note.trim() || undefined,
+        refundReference: refundReference.trim() || undefined,
+      });
+      // 200 covers both "Refund recorded" and "Refund was already recorded";
+      // either way the page refetches and shows the recorded refund.
+      onClose();
+    } catch (err) {
+      setError(
+        isAxiosError(err) && err.response?.status === 400
+          ? err.response.data?.message ||
+              "This promotion was never paid, so there is nothing to refund."
+          : "Couldn't record the refund. Please try again.",
+      );
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={!refund.isPending ? onClose : undefined}
+      />
+      <form
+        onSubmit={handleSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="refund-modal-title"
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <h3
+            id="refund-modal-title"
+            className="text-[16px] font-semibold text-gray-900"
+          >
+            Mark as refunded
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={refund.isPending}
+            className="text-gray-400 hover:text-gray-700"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <p className="text-[13px] text-gray-500 leading-relaxed mb-5">
+          Record a refund you have already paid to the organiser. The promotion
+          will be marked refunded, the event taken down if it is live or
+          awaiting review, and the organiser notified.
+        </p>
+
+        <label
+          htmlFor="refund-reference"
+          className="block text-[12px] font-semibold text-gray-700 mb-1.5"
+        >
+          Refund reference <span className="font-normal text-gray-400">(optional)</span>
+        </label>
+        <input
+          id="refund-reference"
+          value={refundReference}
+          onChange={(e) => setRefundReference(e.target.value)}
+          maxLength={120}
+          placeholder="e.g. TRF-20261103-001"
+          className="w-full mb-4 px-3 py-2 border border-gray-200 rounded-lg text-[13px] outline-none focus:border-blue-400"
+        />
+
+        <label
+          htmlFor="refund-note"
+          className="block text-[12px] font-semibold text-gray-700 mb-1.5"
+        >
+          Note <span className="font-normal text-gray-400">(optional)</span>
+        </label>
+        <textarea
+          id="refund-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={500}
+          rows={3}
+          placeholder="e.g. Refunded by bank transfer, support ticket 1042"
+          className="w-full mb-4 px-3 py-2 border border-gray-200 rounded-lg text-[13px] outline-none focus:border-blue-400 resize-none"
+        />
+
+        {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={refund.isPending}
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-[13px] font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={refund.isPending}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold disabled:opacity-60"
+          >
+            {refund.isPending && <Loader2 size={14} className="animate-spin" />}
+            Record refund
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
