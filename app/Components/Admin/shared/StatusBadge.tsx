@@ -25,6 +25,9 @@ const STATUS_STYLES: Record<string, string> = {
   pending_review: "bg-blue-50 text-blue-700",
   published: "bg-green-50 text-green-700",
   past: "bg-gray-50 text-gray-500",
+  // Payment statuses
+  paid: "bg-green-50 text-green-700",
+  refunded: "bg-violet-50 text-violet-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -48,6 +51,8 @@ const STATUS_LABELS: Record<string, string> = {
   pending_review: "Pending Review",
   published: "Published",
   past: "Past",
+  paid: "Paid",
+  refunded: "Refunded",
 };
 
 export default function StatusBadge({ status }: { status: string }) {
@@ -67,7 +72,9 @@ export default function StatusBadge({ status }: { status: string }) {
         ? "bg-red-500"
         : style.includes("blue")
           ? "bg-blue-500"
-          : "bg-gray-400";
+          : style.includes("violet")
+            ? "bg-violet-500"
+            : "bg-gray-400";
 
   return (
     <span

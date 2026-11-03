@@ -41,6 +41,13 @@ export interface Notification {
   type: NotificationType;
   readAt: string | null;
   createdAt: string;
+  // Rendered by the backend for every notification (single source of copy).
+  title?: string;
+  body?: string;
+  /** Absolute deep link. */
+  url?: string;
+  /** Frontend-relative path. */
+  path?: string;
   payload: {
     actorName?: string;
     actorId?: string;
@@ -74,13 +81,18 @@ export interface Notification {
     subscriptionCode?: string; // payment_failed
     action?: string; // payment_method_updated
     // System kinds
-    kind?: string; // support_ticket_*, event_promotion_*, announcement
+    // support_ticket_*, event_promotion_* (approved | rejected | refunded),
+    // announcement; admin-only: payment_dispute_opened, payment_refunded_external
+    kind?: string;
     ticketNumber?: number; // support_ticket_*
     subject?: string; // support_ticket_received
     eventId?: string; // event_promotion_*
     title?: string; // event_promotion_*, announcement
     body?: string; // announcement
-    refund?: string; // event_promotion_rejected
+    refund?: "manual_pending" | "not_applicable" | string; // event_promotion_rejected
+    reference?: string; // payment_dispute_opened, payment_refunded_external
+    amountKobo?: number | null; // payment_dispute_opened, payment_refunded_external
+    dueAt?: string | null; // payment_dispute_opened — Paystack response deadline
     announcementId?: string; // announcement
     [key: string]: unknown;
   };

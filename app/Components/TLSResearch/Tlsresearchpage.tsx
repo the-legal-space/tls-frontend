@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pin, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Pin, Trash2 } from "lucide-react";
 import {
   ResearchThread,
   ResearchMessage,
@@ -61,6 +61,9 @@ export default function TLSResearchPage() {
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [mobileView, setMobileView] = useState<"sidebar" | "chat">("sidebar");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // ── Load sidebar ──────────────────────────────────────────────────────────
@@ -392,7 +395,36 @@ export default function TLSResearchPage() {
   }, []);
 
   // ── Sidebar actions ───────────────────────────────────────────────────────
-  async function handleDelete(id: string) {
+  // Deleting is permanent on the backend (thread, messages and uploaded PDFs
+  // are erased), so a saved thread always goes through the confirm dialog.
+  // A draft exists only in the UI and is discarded straight away.
+  function handleDelete(id: string) {
+    if (id === DRAFT_ID) {
+      void deleteThread(id);
+      return;
+    }
+    setDeleteError(null);
+    setPendingDeleteId(id);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteThread(pendingDeleteId);
+      if (isMountedRef.current) setPendingDeleteId(null);
+    } catch (err) {
+      console.error("Failed to delete thread:", err);
+      if (isMountedRef.current) {
+        setDeleteError("Couldn't delete this research. Please try again.");
+      }
+    } finally {
+      if (isMountedRef.current) setDeleting(false);
+    }
+  }
+
+  async function deleteThread(id: string) {
     if (id === DRAFT_ID) {
       if (activeIdRef.current === DRAFT_ID) {
         setActiveId(null);
@@ -473,6 +505,15 @@ export default function TLSResearchPage() {
   // ── Thread view: sidebar + chat ───────────────────────────────────────────
   return (
     <div className="flex h-screen bg-white overflow-hidden font-['Geist']">
+      {pendingDeleteId && (
+        <DeleteResearchModal
+          deleting={deleting}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => !deleting && setPendingDeleteId(null)}
+        />
+      )}
+
       {/* Sidebar — hidden on mobile when viewing chat */}
       <div
         className={`${
@@ -590,6 +631,71 @@ export default function TLSResearchPage() {
           onCancel={handleCancel}
           disabled={thinking}
         />
+      </div>
+    </div>
+  );
+}
+
+function DeleteResearchModal({
+  deleting,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  deleting: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-research-title"
+        className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl p-6"
+      >
+        <div className="w-11 h-11 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-5 h-5 text-red-500" />
+        </div>
+        <h3
+          id="delete-research-title"
+          className="text-[16px] font-semibold text-gray-900 text-center mb-1"
+        >
+          Delete this research permanently?
+        </h3>
+        <p className="text-[13px] text-gray-500 text-center leading-relaxed mb-5">
+          The conversation and any documents you uploaded will be erased. This
+          can&apos;t be undone.
+        </p>
+        {error && (
+          <p className="text-[12px] text-red-500 text-center mb-3">{error}</p>
+        )}
+        <div className="flex flex-col gap-2.5">
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white text-[13px] font-medium rounded-xl transition-colors disabled:opacity-70 flex items-center justify-center gap-2"
+          >
+            {deleting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-4 h-4" /> Delete permanently
+              </>
+            )}
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="w-full py-2.5 bg-white hover:bg-gray-100 text-gray-700 text-[13px] font-medium rounded-xl transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

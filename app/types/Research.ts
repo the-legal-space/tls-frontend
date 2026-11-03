@@ -15,7 +15,8 @@ export interface ResearchThread {
   
   export interface ResearchAttachment {
     kind: "pdf";
-    url: string;
+    /** Signed link, expires after 15 minutes. Null on legacy rows; "" while uploading. */
+    url: string | null;
     filename: string;
     sizeBytes: number;
   }

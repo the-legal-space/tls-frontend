@@ -12,8 +12,9 @@ import TableToolbar from "../shared/TableToolbar";
 import TablePagination from "../shared/TablePagination";
 import AddEventModal from "./AddEventModal";
 import EditEventModal from "./EditEventModal";
-import { useAdminEvents } from "@/hooks/useAdmin";
+import { useAdminEvents, useDocket } from "@/hooks/useAdmin";
 import type { AdminEventListItem } from "@/services/admin.services";
+import type { DocketEventListItem } from "@/app/types/admin";
 import { formatDate, formatNaira } from "../shared/format";
 
 // Matches AdminEventStatus from services/admin.services.ts
@@ -26,6 +27,64 @@ const STATUS_OPTIONS = [
   { label: "Rejected", value: "rejected" },
   { label: "Past", value: "past" },
 ];
+
+// GET /admin/docket?paymentStatus= — promotions only, since editorial
+// events have no payment.
+// (TableToolbar renders the empty "All Payments" option itself.)
+const PAYMENT_OPTIONS = [
+  { label: "Pending", value: "pending" },
+  { label: "Paid", value: "paid" },
+  { label: "Refunded", value: "refunded" },
+];
+
+// One table row, built from either list endpoint.
+interface DocketRow {
+  key: string;
+  title: string;
+  organizer: string;
+  contact: string;
+  startAt?: string;
+  endAt?: string;
+  status: string;
+  amountKobo?: number;
+  paymentStatus?: string;
+  /** serviceRequest.id — detail/approve/reject/refund are keyed by it. */
+  promotionId?: string;
+  /** Editorial event (no serviceRequest) to edit directly. */
+  editable?: AdminEventListItem;
+}
+
+function rowFromEvent(ev: AdminEventListItem): DocketRow {
+  const sr = ev.serviceRequest;
+  return {
+    key: ev.id,
+    title: ev.title ?? "Untitled",
+    organizer: sr?.account?.fullName ?? sr?.contactName ?? "—",
+    contact: sr?.contactEmail ?? "—",
+    startAt: ev.startAt,
+    endAt: ev.endAt,
+    status: ev.status,
+    amountKobo: sr?.amount,
+    paymentStatus: sr?.paymentStatus,
+    promotionId: sr?.id,
+    editable: sr?.id ? undefined : ev,
+  };
+}
+
+function rowFromPromotion(item: DocketEventListItem): DocketRow {
+  return {
+    key: item.id,
+    title: item.event?.title ?? item.payload?.title ?? item.eventName ?? "Untitled",
+    organizer: item.account?.fullName ?? item.contactName ?? item.firmName ?? "—",
+    contact: item.contactEmail ?? item.account?.email ?? "—",
+    startAt: item.event?.startAt ?? item.payload?.startAt,
+    endAt: item.event?.endAt ?? item.payload?.endAt,
+    status: item.event?.status ?? item.status,
+    amountKobo: item.amount,
+    paymentStatus: item.paymentStatus,
+    promotionId: item.id,
+  };
+}
 
 // status pill labels per the API notes: pending_review→Pending, published→Approved, rejected→Rejected
 function statusLabel(status: string) {
@@ -51,20 +110,36 @@ export default function DocketPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("");
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AdminEventListItem | null>(null);
 
-  const { data, isLoading } = useAdminEvents({
+  // GET /admin/events has no payment filter, so while one is set the table
+  // switches to GET /admin/docket, which lists promotions only and has no
+  // text search. Promotions are never drafts, so that combination is empty.
+  const byPayment = !!paymentStatus;
+  const eventsQuery = useAdminEvents({
     page,
     limit: 8,
     q: search,
     status,
   });
+  const docketQuery = useDocket(
+    { page, limit: 8, paymentStatus, eventStatus: status },
+    byPayment && status !== "draft",
+  );
 
-  const items = data?.items ?? [];
-  const stats = data?.stats;
-  const pagination = data?.pagination;
+  const active = byPayment ? docketQuery : eventsQuery;
+  const isLoading = active.isLoading && active.fetchStatus !== "idle";
+  const rows: DocketRow[] = byPayment
+    ? status === "draft"
+      ? []
+      : (docketQuery.data?.items ?? []).map(rowFromPromotion)
+    : (eventsQuery.data?.items ?? []).map(rowFromEvent);
+  // Stat cards always describe all events, not the filtered page.
+  const stats = eventsQuery.data?.stats;
+  const pagination = active.data?.pagination;
 
   return (
     <div className="min-h-screen bg-white">
@@ -94,6 +169,15 @@ export default function DocketPage() {
               options: STATUS_OPTIONS,
               onChange: (v) => {
                 setStatus(v);
+                setPage(1);
+              },
+            },
+            {
+              label: "All Payments",
+              value: paymentStatus,
+              options: PAYMENT_OPTIONS,
+              onChange: (v) => {
+                setPaymentStatus(v);
                 setPage(1);
               },
             },
@@ -137,46 +221,51 @@ export default function DocketPage() {
                     Loading events...
                   </td>
                 </tr>
-              ) : items.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-16 text-center text-gray-400 text-[13px]">
                     No events found.
                   </td>
                 </tr>
               ) : (
-                items.map((ev) => {
-                  const sr = ev.serviceRequest;
-                  const title = ev.title ?? "Untitled";
-                  const organizer = sr?.account?.fullName ?? sr?.contactName ?? "—";
-                  const contact = sr?.contactEmail ?? "—";
-                  const amount = sr?.amount != null ? `₦${(sr.amount / 100).toLocaleString()}` : "—";
+                rows.map((row) => {
+                  const amount =
+                    row.amountKobo != null
+                      ? `₦${(row.amountKobo / 100).toLocaleString()}`
+                      : "—";
 
                   // Actions for promotion events route through serviceRequest.id,
                   // since /admin/docket/:id (detail/approve/reject) is keyed by
                   // that id, not event.id. Plain editorial events (no
                   // serviceRequest) get a direct Edit action via PATCH /events/:id.
-                  const canAct = !!sr?.id;
-                  const isPending = ev.status === "pending_review";
+                  const isPending = row.status === "pending_review";
 
                   return (
-                    <tr key={ev.id} className="border-b border-[#F3F4F6] last:border-0">
-                      <td className="px-5 py-3.5 text-[13px] text-gray-800 whitespace-nowrap">{title}</td>
-                      <td className="px-5 py-3.5 text-[13px] text-gray-500 whitespace-nowrap">{organizer}</td>
-                      <td className="px-5 py-3.5 text-[13px] text-gray-700 whitespace-nowrap">{contact}</td>
+                    <tr key={row.key} className="border-b border-[#F3F4F6] last:border-0">
+                      <td className="px-5 py-3.5 text-[13px] text-gray-800 whitespace-nowrap">{row.title}</td>
+                      <td className="px-5 py-3.5 text-[13px] text-gray-500 whitespace-nowrap">{row.organizer}</td>
+                      <td className="px-5 py-3.5 text-[13px] text-gray-700 whitespace-nowrap">{row.contact}</td>
                       <td className="px-5 py-3.5 text-[13px] text-gray-700 whitespace-nowrap">
-                        {ev.startAt ? formatDate(ev.startAt) : "—"}
+                        {row.startAt ? formatDate(row.startAt) : "—"}
                       </td>
                       <td className="px-5 py-3.5 text-[13px] text-gray-700 whitespace-nowrap">
-                        {ev.endAt ? formatDate(ev.endAt) : "—"}
+                        {row.endAt ? formatDate(row.endAt) : "—"}
                       </td>
                       <td className="px-5 py-3.5">
-                        <StatusBadge status={statusLabel(ev.status)} />
+                        <StatusBadge status={statusLabel(row.status)} />
                       </td>
-                      <td className="px-5 py-3.5 text-[13px] text-gray-700 whitespace-nowrap">{amount}</td>
+                      <td className="px-5 py-3.5 text-[13px] text-gray-700 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span>{amount}</span>
+                          {row.paymentStatus && (
+                            <StatusBadge status={row.paymentStatus} />
+                          )}
+                        </div>
+                      </td>
                       <td className="px-5 py-3.5">
-                        {canAct ? (
+                        {row.promotionId ? (
                           <button
-                            onClick={() => router.push(`/admin/docket/${sr!.id}`)}
+                            onClick={() => router.push(`/admin/docket/${row.promotionId}`)}
                             className={`px-4 py-1.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap transition-colors ${
                               isPending
                                 ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -185,14 +274,14 @@ export default function DocketPage() {
                           >
                             {isPending ? "Take Action" : "View Details"}
                           </button>
-                        ) : (
+                        ) : row.editable ? (
                           <button
-                            onClick={() => setEditingEvent(ev)}
+                            onClick={() => setEditingEvent(row.editable!)}
                             className="px-4 py-1.5 rounded-lg text-[12.5px] font-medium whitespace-nowrap border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
                           >
                             Edit
                           </button>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   );
