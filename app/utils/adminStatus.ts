@@ -15,6 +15,7 @@ export type DerivedAccountStatus =
   | "under_review"
   | "rejected"
   | "suspended"
+  | "dormant"
   | "deleted";
 
 /**

@@ -80,6 +80,11 @@ export default function UserDetailModal({ user, onClose }: Props) {
   const isClientUser = userType === "Client";
   const isActive = accountStatus === "active";
   const isSuspended = accountStatus === "suspended";
+  // Dormant: flagged after 90 days without activity. The user gets "Account is
+  // not active" on every request until an admin reactivates them, which uses
+  // the same endpoint as un-suspending.
+  const isDormant = accountStatus === "dormant";
+  const canReactivate = isSuspended || isDormant;
   const isUnderReview = displayStatus === "under_review";
   // Approve/Reject is the only decision available while a professional is
   // under review, so don't stack a Suspend button on top of it.
@@ -271,7 +276,14 @@ export default function UserDetailModal({ user, onClose }: Props) {
             </button>
           )}
 
-          {isSuspended && (
+          {isDormant && (
+            <p className="text-[12px] text-gray-500 leading-relaxed">
+              This account went dormant after 90 days without activity, so the
+              user can&apos;t sign in. Re-activating restores their access.
+            </p>
+          )}
+
+          {canReactivate && (
             <button
               onClick={() => run("reactivate")}
               disabled={isBusy || !hasReason}
@@ -280,7 +292,8 @@ export default function UserDetailModal({ user, onClose }: Props) {
               {pending === "reactivate" && (
                 <Loader2 size={14} className="animate-spin" />
               )}
-              Re-activate {isLawyerOrFirm ? "Lawyer" : "Client"}
+              {isDormant ? "Activate" : "Re-activate"}{" "}
+              {isLawyerOrFirm ? "Lawyer" : "Client"}
             </button>
           )}
         </div>

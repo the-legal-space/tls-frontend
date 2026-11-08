@@ -23,6 +23,7 @@ const STATUS_OPTIONS = [
   { label: "Active", value: "active" },
   { label: "Under Review", value: "under_review" },
   { label: "Suspended", value: "suspended" },
+  { label: "Dormant", value: "dormant" },
   { label: "Deleted", value: "deleted" },
 ];
 
@@ -65,10 +66,12 @@ export default function UsersPage() {
         return 3;
       case "suspended":
         return 4;
-      case "deleted":
+      case "dormant":
         return 5;
-      default:
+      case "deleted":
         return 6;
+      default:
+        return 7;
     }
   };
 
@@ -212,12 +215,25 @@ export default function UsersPage() {
                       <StatusBadge status={getDisplayStatus(u)} />
                     </td>
                     <td className="px-5 py-3.5">
-                      <button
-                        onClick={() => setSelectedId(u.id)}
-                        className="px-4 py-1.5 border border-gray-300 rounded-lg text-[12.5px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        View
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedId(u.id)}
+                          className="px-4 py-1.5 border border-gray-300 rounded-lg text-[12.5px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          View
+                        </button>
+                        {/* Dormant users can't sign in until reactivated. This
+                            opens the same modal, where the admin gives a reason
+                            and confirms. */}
+                        {String(u.status).toLowerCase() === "dormant" && (
+                          <button
+                            onClick={() => setSelectedId(u.id)}
+                            className="px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[12.5px] font-medium transition-colors"
+                          >
+                            Activate
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
