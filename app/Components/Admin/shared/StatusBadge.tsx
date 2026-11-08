@@ -16,6 +16,9 @@ const STATUS_STYLES: Record<string, string> = {
   suspended: "bg-red-50 text-red-600",
   rejected: "bg-red-50 text-red-600",
   deleted: "bg-gray-50 text-gray-500",
+  // Set by the backend's nightly job after 90 days without activity; the
+  // user can't sign in until an admin reactivates them.
+  dormant: "bg-orange-50 text-orange-700",
   failed: "bg-red-50 text-red-600",
   "lead lost": "bg-red-50 text-red-600",
   lead_lost: "bg-red-50 text-red-600",
@@ -42,6 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: "Rejected",
   under_review: "Under Review",
   deleted: "Deleted",
+  dormant: "Dormant",
   failed: "Failed",
   in_progress: "In Progress",
   lead_lost: "Lead Lost",
@@ -74,7 +78,9 @@ export default function StatusBadge({ status }: { status: string }) {
           ? "bg-blue-500"
           : style.includes("violet")
             ? "bg-violet-500"
-            : "bg-gray-400";
+            : style.includes("orange")
+              ? "bg-orange-500"
+              : "bg-gray-400";
 
   return (
     <span
