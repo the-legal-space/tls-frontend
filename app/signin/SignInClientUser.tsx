@@ -255,6 +255,17 @@ export default function SignInClientUser() {
                     </span>
                   </span>
                 </p>
+                <p className="mt-4 text-center text-xs leading-5 text-gray-500 font-dmSans">
+                  By continuing, you agree to our{" "}
+                  <a href="/terms-of-use" className="font-medium text-blue-600 hover:underline">
+                    Terms of Use
+                  </a>{" "}
+                  and{" "}
+                  <a href="/privacy-policy" className="font-medium text-blue-600 hover:underline">
+                    Privacy Policy
+                  </a>
+                  .
+                </p>
               </div>
             )}
           </div>
