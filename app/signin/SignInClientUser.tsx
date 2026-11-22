@@ -172,7 +172,7 @@ export default function SignInClientUser() {
 
       {/* Main content area — vertically centered */}
       <main className="flex-1 w-full flex items-center pb-0">
-        <div className="w-full mx-auto mt-16 lg:mt-0 md:mt-8">
+        <div className="w-full mx-auto mt-16 lg:mt-0   md:mt-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 items-center gap-2">
             {/* Illustration — desktop only */}
             <div className="hidden lg:block">
@@ -254,6 +254,17 @@ export default function SignInClientUser() {
                       Sign up
                     </span>
                   </span>
+                </p>
+                <p className="mt-4 text-center text-xs leading-5 text-gray-500 font-dmSans">
+                  By continuing, you agree to our{" "}
+                  <a href="/terms-of-use" className="font-medium text-blue-600 hover:underline">
+                    Terms of Use
+                  </a>{" "}
+                  and{" "}
+                  <a href="/privacy-policy" className="font-medium text-blue-600 hover:underline">
+                    Privacy Policy
+                  </a>
+                  .
                 </p>
               </div>
             )}
