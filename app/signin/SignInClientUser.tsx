@@ -172,7 +172,7 @@ export default function SignInClientUser() {
 
       {/* Main content area — vertically centered */}
       <main className="flex-1 w-full flex items-center pb-0">
-        <div className="w-full mx-auto mt-16 lg:mt-0 md:mt-8">
+        <div className="w-full mx-auto mt-16 lg:mt-0   md:mt-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 items-center gap-2">
             {/* Illustration — desktop only */}
             <div className="hidden lg:block">
